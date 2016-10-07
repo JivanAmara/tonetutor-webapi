@@ -12,6 +12,21 @@ https://docs.djangoproject.com/en/1.10/ref/settings/
 
 import os
 
+# This is the host to pass tone check requests through to.
+UPSTREAM_PROTOCOL = 'https://'
+UPSTREAM_HOST = 'www.mandarintt.com'
+UPSTREAM_PATH = '/api/tonecheck'
+
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': (
+            'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.TokenAuthentication',
+    ),
+    'PAGE_SIZE': 10
+}
+
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -23,7 +38,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = '0h%m9z7+30ett199_+409$x_ks67j14oo%s&pe$ak30@7_w8pm'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', False)
 
 ALLOWED_HOSTS = []
 
@@ -37,6 +52,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    'rest_framework',
+    'rest_framework.authtoken',
+    'syllable_samples',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
@@ -47,7 +67,11 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+
+    'corsheaders.middleware.CorsMiddleware',
 ]
+
+CORS_ORIGIN_ALLOW_ALL = True
 
 ROOT_URLCONF = 'tonetutor_webapi.urls'
 
@@ -71,15 +95,18 @@ WSGI_APPLICATION = 'tonetutor_webapi.wsgi.application'
 
 
 # Database
-# https://docs.djangoproject.com/en/1.10/ref/settings/#databases
-
+# https://docs.djangoproject.com/en/1.9/ref/settings/#databases
+DBPASS = os.environ.get('DB_PASS')
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'NAME': 'webvdc',  # Or path to database file if using sqlite3.
+        'USER': 'webvdc',  # Not used with sqlite3.
+        'PASSWORD': DBPASS,  # Not used with sqlite3.
+        'HOST': 'database-host',  # Set to empty string for localhost. Not used with sqlite3.
+        'PORT': '',  # Set to empty string for default. Not used with sqlite3.
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/1.10/ref/settings/#auth-password-validators

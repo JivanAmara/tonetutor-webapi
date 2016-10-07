@@ -1,1 +1,3 @@
 django
+djangorestframework
+docker/dependencies/syllable-samples-0.2.1.tar.gz
