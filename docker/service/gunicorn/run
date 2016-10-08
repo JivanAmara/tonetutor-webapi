@@ -1,0 +1,4 @@
+#!/bin/bash
+gunicorn --pythonpath /tonetutor_webapi/ -e DJANGO_SETTINGS_MODULE=tonetutor_webapi.settings \
+	--log-file /var/log/gunicorn_tonetutor_webapi.log --log-level=debug \
+    -b 127.0.0.1:8001 tonetutor_webapi.wsgi

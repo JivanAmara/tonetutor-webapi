@@ -1,6 +1,7 @@
-from _collections import OrderedDict
+from collections import OrderedDict
 from hashlib import md5
 import json
+import os
 
 from django.conf import settings
 from django.contrib.auth import authenticate
@@ -15,7 +16,9 @@ from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from syllable_samples.interface import get_random_sample
+from logging import getLogger
 
+logger = getLogger(__name__)
 
 class RandomSyllable(APIView):
     @method_decorator(csrf_exempt)
@@ -106,33 +109,38 @@ class ToneCheck(APIView):
             m.update(attempt_data)
             attempt_md5 = m.hexdigest()
 
-            print('Claimed: {}, Actual: {}'.format(attempt_claimed_md5, attempt_md5))
+            print('MD5 Claimed: {}, Actual: {}'.format(attempt_claimed_md5, attempt_md5))
 
-            use_requests = True
             url = ''.join([
                 settings.UPSTREAM_PROTOCOL, settings.UPSTREAM_HOST, settings.UPSTREAM_PATH
             ])
-            if use_requests:
-                r = requests.post(
-                    url,
-                    headers={
-                        'user_agent': 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.6) Gecko/20070725 Firefox/2.0.0.6',
-                        'authorization': 'Token ' + auth_token,
-                    },
-                    data={
-                        'attempt': attempt_data,
-                        'attempt_md5': attempt_claimed_md5,
-                        'extension': extension,
-                        'auth_token': auth_token,
-                        'expected_sound': expected_sound,
-                        'expected_tone': expected_tone, 'is_native': is_native,
-                    },
-                    files={'attempt': attempt_data}
-                )
-                resp = HttpResponse(r.content, status=r.status_code)
-                print(r.content)
-                for hname, hvalue in r.headers.items():
-                    resp[hname] = hvalue
+            r = requests.post(
+                url,
+                timeout=20000,
+                headers={
+                    'user_agent': 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.6) Gecko/20070725 Firefox/2.0.0.6',
+                    'authorization': 'Token ' + auth_token,
+                },
+                data={
+                    'attempt': attempt_data,
+                    'attempt_md5': attempt_claimed_md5,
+                    'extension': extension,
+                    'auth_token': auth_token,
+                    'expected_sound': expected_sound,
+                    'expected_tone': expected_tone, 'is_native': is_native,
+                },
+                files={'attempt': attempt_data}
+            )
+            resp = HttpResponse(r.content, status=r.status_code)
+            logger.info('Status {} from api call to {}'.format(r.status_code, url))
+            logger.debug('Result content: {}'.format(r.content))
+            for hname, hvalue in r.headers.items():
+                if hname == 'content-encoding':
+                    # I've seen content-encoding change as the request passes through requests.
+                    # Keeping it set to 'gzip' from the upstream call results in an error on
+                    #    the client.
+                    continue
+                resp[hname] = hvalue
         except KeyError:
             msg = 'Each of the following fields is required: '\
                   'attempt, extension, expected_sound, expected_tone, is_native'

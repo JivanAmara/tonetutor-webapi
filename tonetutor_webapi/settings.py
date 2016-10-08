@@ -9,13 +9,14 @@ https://docs.djangoproject.com/en/1.10/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/1.10/ref/settings/
 """
-
 import os
 
 # This is the host to pass tone check requests through to.
-UPSTREAM_PROTOCOL = 'https://'
-UPSTREAM_HOST = 'www.mandarintt.com'
+UPSTREAM_PROTOCOL = os.environ.get('UPSTREAM_PROTOCOL', 'https://')
+UPSTREAM_HOST = os.environ.get('UPSTREAM_HOST', 'www.mandarintt.com')
 UPSTREAM_PATH = '/api/tonecheck'
+
+LOG_FILEPATH = '/var/log/tonetutor_webapi.log'
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
@@ -35,12 +36,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # See https://docs.djangoproject.com/en/1.10/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = '0h%m9z7+30ett199_+409$x_ks67j14oo%s&pe$ak30@7_w8pm'
+SECRET_KEY = os.environ['SECRET_KEY']
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', False)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['api.mandarintt.com', 'test-api.mandarintt.com']
 
 
 # Application definition
@@ -145,3 +146,28 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.10/howto/static-files/
 
 STATIC_URL = '/static/'
+STATIC_ROOT = '/tonetutor_webapi-static'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': LOG_FILEPATH,
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        '': {
+            'handlers': ['file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
