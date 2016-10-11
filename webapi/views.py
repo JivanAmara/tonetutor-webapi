@@ -85,6 +85,12 @@ class AuthenticateUser(APIView):
         return http_resp
 
 class ToneCheck(APIView):
+    """ Checks the value of an audio recording against the machine learning model via
+        the api at settings.UPSTREAM_HOST.
+        See: tonetutor.webui.views.ToneCheck for input/output details.
+        Note: This view adds a field 'attempt_url' containing a url corresponding to the result's
+            'attempt_path'.
+    """
     @method_decorator(csrf_exempt)
     def dispatch(self, request, *args, **kwargs):
         return APIView.dispatch(self, request, *args, **kwargs)
@@ -114,31 +120,57 @@ class ToneCheck(APIView):
             url = ''.join([
                 settings.UPSTREAM_PROTOCOL, settings.UPSTREAM_HOST, settings.UPSTREAM_PATH
             ])
-            r = requests.post(
-                url,
-                timeout=20000,
-                headers={
-                    'user_agent': 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.6) Gecko/20070725 Firefox/2.0.0.6',
-                    'authorization': 'Token ' + auth_token,
-                },
-                data={
-                    'attempt': attempt_data,
-                    'attempt_md5': attempt_claimed_md5,
-                    'extension': extension,
-                    'auth_token': auth_token,
-                    'expected_sound': expected_sound,
-                    'expected_tone': expected_tone, 'is_native': is_native,
-                },
-                files={'attempt': attempt_data}
-            )
-            resp = HttpResponse(r.content, status=r.status_code)
+            try:
+                r = requests.post(
+                    url,
+                    timeout=5,
+                    headers={
+                        'user_agent': 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.6) Gecko/20070725 Firefox/2.0.0.6',
+                        'authorization': 'Token ' + auth_token,
+                    },
+                    data={
+                        'attempt': attempt_data,
+                        'attempt_md5': attempt_claimed_md5,
+                        'extension': extension,
+                        'auth_token': auth_token,
+                        'expected_sound': expected_sound,
+                        'expected_tone': expected_tone, 'is_native': is_native,
+                    },
+                    files={'attempt': attempt_data}
+                )
+                try:
+                    json_result = r.json()
+                    # The attempt file is hosted on the upstream server
+                    # Make a full url from the path returned.
+                    attempt_path = json_result['attempt_path']
+                    attempt_url = ''.join([
+                        settings.UPSTREAM_PROTOCOL, settings.UPSTREAM_HOST, attempt_path
+                    ])
+                    json_result['attempt_url'] = attempt_url
+                    content = json.dumps(json_result)
+                except:
+                    content = r.content
+            except requests.exceptions.Timeout:
+                logger.error('Timeout trying to access: {}'.format(url))
+                content = json.dumps({
+                    'status': False,
+                    'detail': 'Timeout accessing upstream server: {}'.format(settings.UPSTREAM_HOST)
+                })
+
+            resp = HttpResponse(content, status=r.status_code)
             logger.info('Status {} from api call to {}'.format(r.status_code, url))
             logger.debug('Result content: {}'.format(r.content))
+            hop_by_hop = ['connection', 'keep-alive', 'public', 'proxy-authenticate',
+                'transfer-encoding', 'upgrade'
+            ]
+
             for hname, hvalue in r.headers.items():
-                if hname == 'content-encoding':
+                hname = hname.lower()
+                if hname == 'content-encoding' or hname in hop_by_hop:
                     # I've seen content-encoding change as the request passes through requests.
                     # Keeping it set to 'gzip' from the upstream call results in an error on
                     #    the client.
+                    # hop-by-hop headers cause problems passed along from here.
                     continue
                 resp[hname] = hvalue
         except KeyError:
