@@ -6,6 +6,7 @@ upstream app_server_tonetutor_webapi {
 server {
     listen [::]:80 default_server ipv6only=off;
     server_name _;
+    root /tonetutor-media/;
 
 	client_max_body_size 4G;	
 	keepalive_timeout 5;

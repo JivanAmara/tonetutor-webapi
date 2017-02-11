@@ -47,7 +47,7 @@ RUN SECRET_KEY='tempsecretkey' python3 /tonetutor_webapi/manage.py collectstatic
 COPY docker/service /etc/service
 
 # Run With:
-# docker run --name <container-name> -e SECRET_KEY=<site-secret-key> -e DB_PASS=<db-pass> -e UPSTREAM_HOST=<upstream-host> -dit -p <host_port>:80 --add-host=database-host:<host-ip> <image>
+# docker run --name <container-name> -e SECRET_KEY=<site-secret-key> -e DB_PASS=<db-pass> -e UPSTREAM_HOST=<upstream-host> -dit -p <host_port>:80 -v /mnt/data-volume/tonetutor-media/audio-files/:/tonetutor-media/tonetutor-audio-files/ --add-host=database-host:<host-ip> <image>
 # - Optional -e UPSTREAM_HOST is the host doing tone checks. Setting this overrides default in settings file.
 # - Optional -e UPSTREAM_PROTOCOL can be set to change from default in settings file.
 # - Optional -e DEBUG=True will run using the production settings file but with DEBUG=True

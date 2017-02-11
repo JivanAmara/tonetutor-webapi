@@ -36,12 +36,12 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # See https://docs.djangoproject.com/en/1.10/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ['SECRET_KEY']
+SECRET_KEY = os.environ.get('SECRET_KEY', 'Not really the secret key.')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', False)
 
-ALLOWED_HOSTS = ['api.mandarintt.com', 'test-api.mandarintt.com']
+ALLOWED_HOSTS = ['api.mandarintt.com', 'test-api.mandarintt.com', 'www.mandarintt.com']
 
 
 # Application definition
@@ -54,9 +54,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    'webapi',
     'rest_framework',
     'rest_framework.authtoken',
     'syllable_samples',
+    'tonerecorder',
+    'hanzi_basics',
     'corsheaders',
 ]
 
@@ -147,6 +150,9 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = '/tonetutor_webapi-static'
+MEDIA_URL = '/'
+MEDIA_ROOT = '/tonetutor-media/'
+SYLLABLE_AUDIO_DIR = '/tonetutor-audio-files/'
 
 LOGGING = {
     'version': 1,
