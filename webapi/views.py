@@ -1,6 +1,8 @@
 from collections import OrderedDict
+from datetime import datetime
 from hashlib import md5
 import json
+from logging import getLogger
 import os
 
 from django.conf import settings
@@ -11,12 +13,16 @@ from django.http.response import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+import pytz
 import requests
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
 from syllable_samples.interface import get_random_sample
-from logging import getLogger
+from tonerecorder.models import RecordedSyllable
+
+from webapi.models import RecordingGrade
+
 
 logger = getLogger(__name__)
 
@@ -51,6 +57,11 @@ class AuthenticateUser(APIView):
     def post(self, request, *args, **kwargs):
         username = request.POST.get('username')
         password = request.POST.get('password')
+        if {'null', 'undefined'} & {username}:
+            username = None
+        if {'null', 'undefined'} & {password}:
+            password = None
+
         if username is None or password is None:
             status_code = 401
             msgs = []
@@ -73,10 +84,16 @@ class AuthenticateUser(APIView):
                     'detail': 'Invalid password for {}.'.format(username),
                 }
             else:
-                token, created_ignored = Token.objects.get_or_create(user=user)
+                token, created = Token.objects.get_or_create(user=user)
+                if not created:
+                    token.delete()
+                    token = Token(user=user)
+                    token.save()
+
                 status_code = 200
                 resp = OrderedDict([
                     ('username', user.username),
+                    ('user_id', user.id),
                     ('auth_token', token.key),
                 ])
 
@@ -150,14 +167,15 @@ class ToneCheck(APIView):
                     content = json.dumps(json_result)
                 except:
                     content = r.content
+                status = r.status_code
             except requests.exceptions.Timeout:
                 logger.error('Timeout trying to access: {}'.format(url))
                 content = json.dumps({
                     'status': False,
                     'detail': 'Timeout accessing upstream server: {}'.format(settings.UPSTREAM_HOST)
                 })
-
-            resp = HttpResponse(content, status=r.status_code)
+                status = 504  # 504: Gateway Timeout
+            resp = HttpResponse(content, status=status)
             logger.info('Status {} from api call to {}'.format(r.status_code, url))
             logger.debug('Result content: {}'.format(r.content))
             hop_by_hop = ['connection', 'keep-alive', 'public', 'proxy-authenticate',
@@ -178,4 +196,118 @@ class ToneCheck(APIView):
                   'attempt, extension, expected_sound, expected_tone, is_native'
             resp = HttpResponse(json.dumps({'detail': msg}), status=400)
 
+        return resp
+
+class GradeRecording(APIView):
+
+    @method_decorator(csrf_exempt)
+    def dispatch(self, request, *args, **kwargs):
+        return View.dispatch(self, request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        grading_data = json.loads(request.body.decode('utf-8'))
+        listener_id = grading_data['listenerId']
+        grader = User.objects.get(id=listener_id)
+        expected_token = Token.objects.get(user=grader)
+        token = grading_data['authToken']
+        # Compare utc datetime instances as naive (timezone-unaware) datetimes
+        now = datetime.now(tz=pytz.utc)
+        token_age_in_hours = (now - expected_token.created).total_seconds() // 3600
+        if token_age_in_hours >= 24:
+            json_resp = json.dumps({'status': 'fail', 'msg': 'authentication expired'})
+            status_code = 403
+        elif token != expected_token.key:
+            json_resp = json.dumps({'status': 'fail', 'msg': 'bad auth token'})
+            status_code = 403
+        elif token == expected_token.key:
+            print([ a for a in dir(request) if a[0] != '_'])
+            recording_id = int(kwargs['recording_id'])
+            recording = RecordedSyllable.objects.get(id=recording_id)
+
+            grading = RecordingGrade(
+                grader=grader,
+                recording=recording,
+                grade=grading_data['grade'],
+                discard=grading_data.get('discard', False),
+                button_sounds=grading_data.get('buttonSounds', False),
+                background_hum=grading_data.get('backgroundHum', False),
+                background_noise=grading_data.get('backgroundNoise', False),
+                other=grading_data.get('other', None),
+            )
+
+            try:
+                grading.save()
+                json_resp = json.dumps({'status': 'ok'})
+                status_code = 201  # Created
+            except Exception as ex:
+                json_resp = json.dumps({'status': 'fail', 'detail': ex})
+                status_code = 500  # Internal Server Error
+
+        resp = HttpResponse(content=json_resp, status=status_code)
+        resp['Content-Type'] = 'application/json'
+        return resp
+
+
+def authorized(to_wrap):
+    # Wraps a view function, ensuring that the user is authenticated before executing the view.
+    # If the user isn't authenticated, returns a json string indicating that.
+    def wrapped(request, *args, **kwargs):
+        try:
+            grading_data = json.loads(request.body.decode('utf-8'))
+            listener_id = grading_data['listenerId']
+            grader = User.objects.get(id=listener_id)
+            expected_token = Token.objects.get(user=grader)
+            token = grading_data['authToken']
+            # Compare utc datetime instances as naive (timezone-unaware) datetimes
+            now = datetime.now(tz=pytz.utc)
+            token_age_in_hours = (now - expected_token.created).total_seconds() // 3600
+            if token_age_in_hours >= 24:
+                json_resp = json.dumps({'status': 'fail', 'msg': 'authentication expired'})
+                status = 403
+                resp = HttpResponse(json_resp, status_code=status)
+            elif token != expected_token.key:
+                json_resp = json.dumps({'status': 'fail', 'msg': 'bad auth token'})
+                status = 403
+                resp = HttpResponse(json_resp, status=status)
+            elif token == expected_token.key:
+                # Everything's good, pass through to the wrapped function
+                resp = to_wrap(request, *args, **kwargs)
+        except Exception as e:
+            status = 500
+            msg = e.message if hasattr(e, 'message') else str(e)
+            json_resp = json.dumps({'status': 'fail', 'detail': 'Authorization Exception:\n{}'.format(msg)})
+            resp = HttpResponse(json_resp, status=status)
+
+        return resp
+
+    return wrapped
+
+
+class GetRecordingToGrade(APIView):
+
+    @method_decorator(csrf_exempt)
+    def dispatch(self, request, *args, **kwargs):
+        return View.dispatch(self, request, *args, **kwargs)
+
+    @method_decorator(authorized)
+    def post(self, request, *args, **kwargs):
+        grading_data = json.loads(request.body.decode('utf-8'))
+        listener_id = grading_data['listenerId']
+        next_recording = RecordedSyllable.objects.exclude(recordinggrade__grader__id=listener_id).order_by('id').first()
+
+        if next_recording is None:
+            json_resp = json.dumps({
+                'status': 'complete', 'detail': 'No further recordings to grade now.',
+            })
+            status_code = 200
+        else:
+            audio_file_basename = os.path.basename(next_recording.audio_original)
+            audio_url = os.path.join(settings.MEDIA_URL, settings.SYLLABLE_AUDIO_DIR, audio_file_basename)
+            json_resp = json.dumps({
+                'status': 'ok', 'recordingId': next_recording.id,
+                'audioUrl': audio_url
+            })
+            status_code = 200
+
+        resp = HttpResponse(json_resp, status=status_code)
         return resp
