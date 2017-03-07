@@ -48,6 +48,9 @@ class RandomSyllable(APIView):
         return resp
 
 class AuthenticateUser(APIView):
+    ''' Authentication api which takes 3 POST args; username, password, (optional bool, default false) newUser.
+        Returns JSON, username, user_id, auth_token on success.  Returns JSON, detail on failure.
+    '''
     permission_classes = (AllowAny,)
 
     @method_decorator(csrf_exempt)
@@ -57,6 +60,8 @@ class AuthenticateUser(APIView):
     def post(self, request, *args, **kwargs):
         username = request.POST.get('username')
         password = request.POST.get('password')
+        new_user = json.loads(request.POST.get('newUser', 'False'))
+
         if {'null', 'undefined'} & {username}:
             username = None
         if {'null', 'undefined'} & {password}:
@@ -74,15 +79,26 @@ class AuthenticateUser(APIView):
                 'detail': ', '.join(msgs)
             }
         else:
+            # Create a new user only if the newUser flag is set and there isn't an existing user.
             if not User.objects.filter(username=username).exists():
-                User.objects.create_user(username=username, password=password)
+                if new_user:
+                    User.objects.create_user(username=username, password=password)
+                else:
+                    # User doesn't exist & new user not indicated.
+                    status_code = 400
+                    resp = {'detail': 'User "{}" does not exist.'.format(username)}
+                    json_resp = json.dumps(resp)
+                    http_resp = HttpResponse(json_resp, status=status_code)
+                    return http_resp
 
             user = authenticate(username=username, password=password)
+
             if user is None:
                 status_code = 401
                 resp = {
                     'detail': 'Invalid password for {}.'.format(username),
                 }
+            # If we've got a valid user, update & return an auth token for the user.
             else:
                 token, created = Token.objects.get_or_create(user=user)
                 if not created:
@@ -305,7 +321,7 @@ class GetRecordingToGrade(APIView):
             audio_url = os.path.join(settings.MEDIA_URL, settings.SYLLABLE_AUDIO_DIR, audio_file_basename)
             json_resp = json.dumps({
                 'status': 'ok', 'recordingId': next_recording.id,
-                'audioUrl': audio_url
+                'pinyin': next_recording.syllable.display, 'audioUrl': audio_url
             })
             status_code = 200
 
