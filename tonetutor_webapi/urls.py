@@ -18,12 +18,8 @@ from django.conf.urls import url, include, static
 
 from webapi import urls as webapi_urls
 
-
 # from django.contrib import admin
-urlpatterns = [
-#     url(r'^admin/', admin.site.urls),
-    url(r'^mobile-api/', include(webapi_urls)),
-]
+urlpatterns = webapi_urls.urlpatterns
 
 if settings.DEBUG:
     urlpatterns += static.static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
