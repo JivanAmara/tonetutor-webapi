@@ -309,7 +309,8 @@ class GetRecordingToGrade(APIView):
     def post(self, request, *args, **kwargs):
         grading_data = json.loads(request.body.decode('utf-8'))
         listener_id = grading_data['listenerId']
-        next_recording = RecordedSyllable.objects.exclude(recordinggrade__grader__id=listener_id).order_by('id').first()
+        next_recording = RecordedSyllable.objects.exclude(
+            recordinggrade__grader__id=listener_id).exclude(audio_silence_stripped=None).order_by('id').first()
 
         if next_recording is None:
             json_resp = json.dumps({
@@ -317,7 +318,7 @@ class GetRecordingToGrade(APIView):
             })
             status_code = 200
         else:
-            audio_file_basename = os.path.basename(next_recording.audio_original)
+            audio_file_basename = os.path.basename(next_recording.audio_silence_stripped)
             audio_url = os.path.join(settings.MEDIA_URL, settings.SYLLABLE_AUDIO_DIR, audio_file_basename)
             json_resp = json.dumps({
                 'status': 'ok', 'recordingId': next_recording.id,

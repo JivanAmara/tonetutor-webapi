@@ -1,6 +1,5 @@
-FROM phusion/baseimage
+FROM phusion-updated-apt:2017-03-07
 
-RUN apt-get update
 RUN apt-get install -y python3-pip
 RUN pip3 install --upgrade pip
 
