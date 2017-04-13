@@ -1,4 +1,4 @@
-FROM phusion-updated-apt:2017-03-07
+FROM phusion-updated-apt:latest
 
 RUN apt-get install -y python3-pip
 RUN pip3 install --upgrade pip
@@ -45,8 +45,16 @@ RUN SECRET_KEY='tempsecretkey' python3 /tonetutor_webapi/manage.py collectstatic
 # --- Services to start at container start
 COPY docker/service /etc/service
 
+# Adds remote path mapping via env vars to pydevd to support remote debugging.
+COPY ./docker/pydevd_path_mapping_snippet.py /tonetutor_webapi/
+RUN bash -c '\
+    export SNIPPET=`cat /tonetutor_webapi/pydevd_path_mapping_snippet.py`;\
+    export PYDEVD_FILE_UTILS=/usr/local/lib/python3.4/dist-packages/pydevd_file_utils.py;\
+    perl -0777 -i -pe "s/PATHS_FROM_ECLIPSE_TO_PYTHON = \[\]/$SNIPPET/" $PYDEVD_FILE_UTILS \
+'
+
 # Run With:
-# docker run --name <container-name> -e SECRET_KEY=<site-secret-key> -e DB_PASS=<db-pass> -e UPSTREAM_HOST=<upstream-host> -dit -p <host_port>:80 -v /mnt/data-volume/tonetutor-media/audio-files/:/tonetutor-media/tonetutor-audio-files/ --add-host=database-host:<host-ip> <image>
+# docker run --name <container-name> -e SECRET_KEY=<site-secret-key> -e DB_PASS=<db-pass> -e STRIPE_SECRET_KEY=<secret-key> -e UPSTREAM_HOST=<upstream-host> -dit -p <host_port>:80 -v /mnt/data-volume/tonetutor-media/audio-files/:/tonetutor-media/tonetutor-audio-files/ --add-host=database-host:<host-ip> <image>
 # - Optional -e UPSTREAM_HOST is the host doing tone checks. Setting this overrides default in settings file.
 # - Optional -e UPSTREAM_PROTOCOL can be set to change from default in settings file.
 # - Optional -e DEBUG=True will run using the production settings file but with DEBUG=True

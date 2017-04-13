@@ -41,7 +41,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'Not really the secret key.')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', False)
 
-ALLOWED_HOSTS = ['api.mandarintt.com', 'test-api.mandarintt.com', 'www.mandarintt.com']
+ALLOWED_HOSTS = ['api.mandarintt.com', 'test-api.mandarintt.com', 'www.mandarintt.com', 'localhost']
 
 
 # Application definition
@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'tonerecorder',
     'hanzi_basics',
     'corsheaders',
+    'usermgmt',
 ]
 
 MIDDLEWARE = [

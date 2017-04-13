@@ -8,7 +8,9 @@ from rest_framework import routers
 from rest_framework.authtoken import views
 
 from webapi import views as webapi_views
-from webapi.views import AuthenticateUser, RandomSyllable, ToneCheck, GradeRecording, GetRecordingToGrade
+from webapi.views import AuthenticateUser, RandomSyllable, ToneCheck, GradeRecording, GetRecordingToGrade, \
+    AddMonthSubscription
+# from webapi.view import StripeTest
 
 
 router = routers.DefaultRouter()
@@ -20,6 +22,8 @@ urlpatterns = [
     url(r'^tokenauth/?', AuthenticateUser.as_view()),
     url(r'^randomsyllable/?', RandomSyllable.as_view()),
     url(r'^tonecheck/?', ToneCheck.as_view()),
+    url(r'^pay_subscription/?', AddMonthSubscription.as_view()),
+#     url(r'^stripe_test/?', StripeTest.as_view()),
     url(r'^get_recording_to_grade/?', GetRecordingToGrade.as_view(), name='ttapi_get_recording_to_grade'),
     url(r'^grade_recording/(?P<recording_id>[\d]+)/?', GradeRecording.as_view(), name='ttapi_grade_recording'),
     url(r'^auth/', include('rest_framework.urls', namespace='rest_framework'))

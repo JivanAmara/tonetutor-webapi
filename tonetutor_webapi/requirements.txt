@@ -5,9 +5,12 @@ gunicorn
 djangorestframework
 django-cors-headers
 docker/dependencies/syllable-samples-0.2.1.tar.gz
-docker/dependencies/tonerecorder-1.1.3.tar.gz
+docker/dependencies/tonerecorder-1.1.6.tar.gz
 docker/dependencies/hanzi-basics-1.1.2.tar.gz
+docker/dependencies/tonetutor_usermgmt-0.0.3.tar.gz
 pytz
+stripe
+pydevd==1.0.0
 
 # --- Requests
 requests
