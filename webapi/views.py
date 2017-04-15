@@ -74,11 +74,14 @@ def authorized(to_wrap):
 
 
 class RandomSyllable(APIView):
+    permission_classes = (AllowAny,)
+
     @method_decorator(csrf_exempt)
     def dispatch(self, request, *args, **kwargs):
         return APIView.dispatch(self, request, *args, **kwargs)
 
-    def get(self, request, *args, **kwargs):
+    @method_decorator(authorized)
+    def post(self, request, *args, **kwargs):
         sound, tone, display, path, hanzi = get_random_sample()
 
         # 'css/style.css' file should exist in static path. otherwise, error will occur
