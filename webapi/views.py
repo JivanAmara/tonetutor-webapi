@@ -189,6 +189,7 @@ class AuthenticateUser(APIView):
         username = request.POST.get('username')
         password = request.POST.get('password')
         new_user = json.loads(request.POST.get('newUser', 'false'))
+        logger.info('Authentication requested for user: {} newUser: {}'.format(username, new_user))
 
         if {'null', 'undefined'} & {username}:
             username = None
@@ -203,6 +204,8 @@ class AuthenticateUser(APIView):
             if password is None:
                 msgs.append('password is required')
 
+            logger.error(', '.join(msgs))
+
             resp = {
                 'detail': ', '.join(msgs)
             }
@@ -210,24 +213,28 @@ class AuthenticateUser(APIView):
             # Create a new user only if the newUser flag is set and there isn't an existing user.
             if not User.objects.filter(username=username).exists():
                 if new_user:
+                    logger.info('Creating new user')
                     User.objects.create_user(username=username, password=password)
                 else:
                     # User doesn't exist & new user not indicated.
+                    logger.error('User does not exist')
                     status_code = 400
                     resp = {'detail': 'User "{}" does not exist.'.format(username)}
                     json_resp = json.dumps(resp)
                     http_resp = HttpResponse(json_resp, status=status_code)
                     return http_resp
 
+            logger.info('Attempting authentication')
             user = authenticate(username=username, password=password)
-
             if user is None:
+                logger.info('Authentication failed')
                 status_code = 401
                 resp = {
                     'detail': 'Invalid password for {}.'.format(username),
                 }
             # If we've got a valid user, update & return an auth token for the user.
             else:
+                logger.info('Authentication successful, updating auth token')
                 token, created = Token.objects.get_or_create(user=user)
                 if not created:
                     token.delete()
@@ -241,8 +248,7 @@ class AuthenticateUser(APIView):
                     ('auth_token', token.key),
                 ])
 
-        json_resp = json.dumps(resp)
-        http_resp = HttpResponse(json_resp, status=status_code)
+        http_resp = JsonResponse(resp, status=status_code)
         return http_resp
 
 class ToneCheck(APIView):
