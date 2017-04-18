@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from datetime import datetime
+from datetime import datetime, timedelta
 from hashlib import md5
 import json
 from logging import getLogger
@@ -150,19 +150,19 @@ class AddMonthSubscription(APIView):
         if self.success is True:
             try:
                 latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('end_date').first()
-                if latest_subscription.end_date < datetime.datetime.today() - datetime.timedelta(days=1):
+                if latest_subscription.end_date < datetime.today() - timedelta(days=1):
                     latest_subscription = None
             except SubscriptionHistory.DoesNotExist:
                 latest_subscription = None
 
             if latest_subscription is None:
                 SubscriptionHistory.objects.create(
-                        user=user, begin_date=datetime.datetime.today(),
-                        end_date=datetime.datetime.today() + datetime.timedelta(days=31),
-                        stripe_confirm=charge['id'], payment_date=datetime.datetime.fromtimestamp(charge['created'])
+                        user=user, begin_date=datetime.today(),
+                        end_date=datetime.today() + timedelta(days=31),
+                        stripe_confirm=charge['id'], payment_date=datetime.fromtimestamp(charge['created'])
                 )
             else:
-                latest_subscription.end_date = latest_subscription.end_date + datetime.timedelta(days=31)
+                latest_subscription.end_date = latest_subscription.end_date + timedelta(days=31)
                 latest_subscription.save()
             resp = {'subscribed_until': latest_subscription.end_date.strftime('%Y-%m-%d')}
             status_code = 200
@@ -241,11 +241,26 @@ class AuthenticateUser(APIView):
                     token = Token(user=user)
                     token.save()
 
+                try:
+                    latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('-end_date').first()
+                    subscr_enddate = latest_subscription.end_date
+                    if subscr_enddate < datetime.date(datetime.today() - timedelta(days=1)):
+                        subscr_enddate = None
+                except SubscriptionHistory.DoesNotExist:
+                    logger.info('{} has no subscription records'.format(user.username))
+                    subscr_enddate = None
+
+                if subscr_enddate is not None:
+                    subscr_enddate_str = subscr_enddate.strftime('%Y-%m-%d')
+                else:
+                    subscr_enddate_str = 'null'
+
                 status_code = 200
                 resp = OrderedDict([
                     ('username', user.username),
                     ('user_id', user.id),
                     ('auth_token', token.key),
+                    ('subscr_enddate', subscr_enddate_str),
                 ])
 
         http_resp = JsonResponse(resp, status=status_code)
