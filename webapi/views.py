@@ -40,8 +40,10 @@ def authorized(to_wrap):
             try:
                 request_json_data = json.loads(request.body.decode('utf-8'))
                 token = request_json_data['authToken']
-            except:
+                logger.info('Got authToken from json')
+            except Exception as ex:
                 token = request.POST.get('authToken')
+                logger.info('Got authToken from url-encoded params')
 
             try:
                 expected_token = Token.objects.get(key=token)
@@ -112,10 +114,18 @@ class AddMonthSubscription(APIView):
 
     @method_decorator(authorized)
     def post(self, request, *args, **kwargs):
-        POST = request.POST
-        stripe_token = POST['stripeToken']
+        try:
+            request_args = json.loads(request.body.decode('utf8'))
+            stripe_token = request_args['stripeToken']
+            logger.info('Got stripeToken from json payload')
+        except:
+            POST = request.POST
+            stripe_token = POST['stripeToken']
+            logger.info('Got stripeToken from url-encoded args')
+
         # See your keys here: https://dashboard.stripe.com/account/apikeys
         stripe.api_key = os.environ.get('STRIPE_SECRET_KEY')
+        # One-month subscription price in dollars
         month_price = 5.0
 
         # --- Get latest subscription for user
@@ -148,17 +158,16 @@ class AddMonthSubscription(APIView):
 
 
         if self.success is True:
-            try:
-                latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('end_date').first()
-                if latest_subscription.end_date < datetime.date(datetime.today() - timedelta(days=1)):
-                    latest_subscription = None
-            except SubscriptionHistory.DoesNotExist:
+            latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('-end_date').first()
+            if (latest_subscription is not None and
+                latest_subscription.end_date < datetime.date(datetime.today() - timedelta(days=1))):
                 latest_subscription = None
 
             if latest_subscription is None:
                 SubscriptionHistory.objects.create(
                         user=user, begin_date=datetime.today(),
-                        end_date=datetime.date(datetime.today() + timedelta(days=31))
+                        end_date=datetime.date(datetime.today() + timedelta(days=31)),
+                        payment_amount=month_price,
                         stripe_confirm=charge['id'], payment_date=datetime.fromtimestamp(charge['created'])
                 )
             else:
