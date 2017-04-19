@@ -150,7 +150,7 @@ class AddMonthSubscription(APIView):
         if self.success is True:
             try:
                 latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('end_date').first()
-                if latest_subscription.end_date < datetime.today() - timedelta(days=1):
+                if latest_subscription.end_date < datetime.date(datetime.today() - timedelta(days=1)):
                     latest_subscription = None
             except SubscriptionHistory.DoesNotExist:
                 latest_subscription = None
@@ -158,7 +158,7 @@ class AddMonthSubscription(APIView):
             if latest_subscription is None:
                 SubscriptionHistory.objects.create(
                         user=user, begin_date=datetime.today(),
-                        end_date=datetime.today() + timedelta(days=31),
+                        end_date=datetime.date(datetime.today() + timedelta(days=31))
                         stripe_confirm=charge['id'], payment_date=datetime.fromtimestamp(charge['created'])
                 )
             else:
