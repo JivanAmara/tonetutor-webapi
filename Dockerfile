@@ -13,6 +13,20 @@ COPY docker /tonetutor_webapi/docker/
 # Needed by pip install of psycopg2
 RUN apt-get install -y libpq-dev
 
+# Needed by ttlib
+RUN apt-get install -y normalize-audio
+RUN apt-get install -y libav-tools
+RUN apt-get install -y python3-scipy
+RUN apt-get install -y libtaglib-ocaml-dev
+RUN apt-get install -y python3-tk
+RUN apt-get install -y libsnack2
+WORKDIR /tonetutor_webapi/docker/dependencies/snack_2.2.10/python/
+RUN python3 setup.py install
+WORKDIR /
+
+# Needed to support running package tkSnack without X-Windows (used by ttlib)
+RUN apt-get install -y xvfb
+
 # --- Python app dependencies
 COPY tonetutor_webapi/requirements.txt /tonetutor_webapi/tonetutor_webapi/requirements.txt
 COPY docker/dependencies /docker/dependencies

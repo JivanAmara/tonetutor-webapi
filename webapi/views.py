@@ -5,6 +5,9 @@ import json
 from logging import getLogger
 import os
 from pprint import pformat
+import scipy
+from tempfile import NamedTemporaryFile
+import traceback
 
 from django.conf import settings
 from django.contrib.auth import authenticate
@@ -15,6 +18,8 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.base import TemplateView
+from hanzi_basics.models import PinyinSyllable
+import psycopg2
 import pytz
 import requests
 from rest_framework.authtoken.models import Token
@@ -23,8 +28,11 @@ from rest_framework.views import APIView
 import stripe
 from syllable_samples.interface import get_random_sample
 from tonerecorder.models import RecordedSyllable
-
 from usermgmt.models import SubscriptionHistory
+
+from ttlib.characteristics.interface import generate_all_characteristics
+from ttlib.normalization.interface import convert_file_format, normalize_pipeline
+from ttlib.recognizer import ToneRecognizer
 from webapi.models import RecordingGrade
 
 
@@ -63,10 +71,18 @@ def authorized(to_wrap):
 
             # Everything's good, pass through to the wrapped function
             kwargs['user'] = expected_token.user
-            resp = to_wrap(request, *args, **kwargs)
+            try:
+                resp = to_wrap(request, *args, **kwargs)
+            except Exception as e:
+                tb = traceback.format_exc()
+                msg = e.message if hasattr(e, 'message') else pformat(e, indent=4)
+                logger.error('Unexpected Exception from wrapped function: {}\n{}'.format(msg, tb))
+                raise
         except Exception as e:
             status = 500
             msg = e.message if hasattr(e, 'message') else pformat(e, indent=4)
+            tb = traceback.format_exc()
+            logger.error('Unexpected Authorization Exception: {}\n{}'.format(msg, tb))
             json_resp = {'detail': 'Authorization Exception:\n{}'.format(msg)}
             resp = JsonResponse(json_resp, status=status)
 
@@ -250,14 +266,14 @@ class AuthenticateUser(APIView):
                     token = Token(user=user)
                     token.save()
 
-                try:
-                    latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('-end_date').first()
+                latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('-end_date').first()
+                if latest_subscription is None:
+                    logger.info('{} has no subscription records'.format(user.username))
+                    subscr_enddate = None
+                else:
                     subscr_enddate = latest_subscription.end_date
                     if subscr_enddate < datetime.date(datetime.today() - timedelta(days=1)):
                         subscr_enddate = None
-                except SubscriptionHistory.DoesNotExist:
-                    logger.info('{} has no subscription records'.format(user.username))
-                    subscr_enddate = None
 
                 if subscr_enddate is not None:
                     subscr_enddate_str = subscr_enddate.strftime('%Y-%m-%d')
@@ -277,101 +293,95 @@ class AuthenticateUser(APIView):
 
 
 class ToneCheck(APIView):
-    """ Checks the value of an audio recording against the machine learning model via
-        the api at settings.UPSTREAM_HOST.
-        See: tonetutor.webui.views.ToneCheck for input/output details.
-        Note: This view adds a field 'attempt_url' containing a url corresponding to the result's
-            'attempt_path'.
-    """
+    ''' *brief*: provides a web-api to check the predicted tone of an audio sample.
+        *note*: Saves the audio sample for later analsis in model RecordedSyllable.
+        *input*: POST with file 'attempt' and values 'extension', 'expected_sound', 'expected_tone',
+            'is_native'.
+        *return*: JSON-encoded object with 'status' and 'tone' attributes.
+            'status' is a boolean indicating if the call was successful.
+            'tone' is an integer 1-5 indicating the tone or null indicating that the predictor
+                can't tell which tone it is.
+            'attempt_url' is a url (without protocol/domain) to an mp3 file of the attempt.
+    '''
     @method_decorator(csrf_exempt)
     def dispatch(self, request, *args, **kwargs):
-        return APIView.dispatch(self, request, *args, **kwargs)
+        return View.dispatch(self, request, *args, **kwargs)
 
     @method_decorator(authorized)
     def post(self, request, *args, **kwargs):
-        # kwargs['user'] is set by "authorized" decorator
         try:
-            t = Token.objects.get(user=kwargs['user'])
-            auth_token = t.key
-        except Token.DoesNotExist:
-            auth_token = ''
+            user = kwargs['user']
 
-        try:
+            attempt = request.FILES['attempt']
             extension = request.POST['extension']
             expected_sound = request.POST['expected_sound']
             expected_tone = request.POST['expected_tone']
-            is_native = request.POST.get('is_native', False)
-            attempt_claimed_md5 = request.POST.get('attempt_md5', '')
-            attempt = request.FILES['attempt']
+            is_native_text = request.POST.get('is_native', 'false')
+            is_native = False if is_native_text.lower() == 'false' else True
+
+            s = PinyinSyllable.objects.get(sound=expected_sound, tone=expected_tone)
+            rs = RecordedSyllable(native=is_native, user=user, syllable=s, file_extension=extension)
+            original_path = rs.create_audio_path('original')
 
             attempt_data = attempt.read()
             m = md5()
             m.update(attempt_data)
             attempt_md5 = m.hexdigest()
+            attempt_claimed_md5 = request.POST.get('attempt_md5', '')
 
-            print('MD5 Claimed: {}, Actual: {}'.format(attempt_claimed_md5, attempt_md5))
+            logger.info('MD5 Claimed: {}, Actual: {}'.format(attempt_claimed_md5, attempt_md5))
 
-            url = ''.join([
-                settings.UPSTREAM_PROTOCOL, settings.UPSTREAM_HOST, settings.UPSTREAM_PATH
-            ])
+            with open(original_path, 'wb') as f:
+                f.write(attempt_data)
+
+            rs.audio_original = original_path
+            mp3_path = rs.create_audio_path('mp3')
+            convert_file_format(original_path, mp3_path)
+            rs.audio_mp3 = mp3_path
             try:
-                r = requests.post(
-                    url,
-                    timeout=5,
-                    headers={
-                        'user_agent': 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.6) Gecko/20070725 Firefox/2.0.0.6',
-                        'authorization': 'Token ' + auth_token,
-                    },
-                    data={
-                        'attempt': attempt_data,
-                        'attempt_md5': attempt_claimed_md5,
-                        'extension': extension,
-                        'auth_token': auth_token,
-                        'expected_sound': expected_sound,
-                        'expected_tone': expected_tone, 'is_native': is_native,
-                    },
-                    files={'attempt': attempt_data}
-                )
-                try:
-                    json_result = r.json()
-                    # The attempt file is hosted on the upstream server
-                    # Make a full url from the path returned.
-                    attempt_path = json_result['attempt_path']
-                    attempt_url = ''.join([
-                        settings.UPSTREAM_PROTOCOL, settings.UPSTREAM_HOST, attempt_path
-                    ])
-                    json_result['attempt_url'] = attempt_url
-                    content = json.dumps(json_result)
-                except:
-                    content = r.content
-                status = r.status_code
-            except requests.exceptions.Timeout:
-                logger.error('Timeout trying to access: {}'.format(url))
-                content = json.dumps({
-                    'status': False,
-                    'detail': 'Timeout accessing upstream server: {}'.format(settings.UPSTREAM_HOST)
-                })
-                status = 504  # 504: Gateway Timeout
-            resp = HttpResponse(content, status=status)
-            logger.info('Status {} from api call to {}'.format(r.status_code, url))
-            logger.debug('Result content: {}'.format(r.content))
-            hop_by_hop = ['connection', 'keep-alive', 'public', 'proxy-authenticate',
-                'transfer-encoding', 'upgrade'
-            ]
+                rs.save()
+            # When testing, an existing recording may show up again, violating a unique requirement.  It's ok.
+            except Exception as ex:
+                logger.error('Exception attempting to save attempt audio: {}'.format(ex))
+                rs = RecordedSyllable.objects.get(original_md5hex=attempt_md5)
 
-            for hname, hvalue in r.headers.items():
-                hname = hname.lower()
-                if hname == 'content-encoding' or hname in hop_by_hop:
-                    # I've seen content-encoding change as the request passes through requests.
-                    # Keeping it set to 'gzip' from the upstream call results in an error on
-                    #    the client.
-                    # hop-by-hop headers cause problems passed along from here.
-                    continue
-                resp[hname] = hvalue
-        except KeyError:
-            msg = 'Each of the following fields is required: '\
-                  'attempt, extension, expected_sound, expected_tone, is_native'
-            resp = HttpResponse(json.dumps({'detail': msg}), status=400)
+            with open(original_path, 'rb') as original:
+                with NamedTemporaryFile(suffix='.wav') as normalized:
+                    normalize_pipeline(original_path, normalized.name)
+                    sample_rate, wave_data = scipy.io.wavfile.read(normalized.name)
+                    # --- Deal with sample that's too short to accurately analyze
+                    # minimum length (seconds)
+                    min_length = 0.15
+                    attempt_length = len(wave_data) / sample_rate
+                    logger.info('Attempt length {}{}: {}'.format(
+                        expected_sound, expected_tone, attempt_length)
+                    )
+                    if attempt_length < min_length:
+                        tone = None
+                    else:
+                        sample_characteristics = generate_all_characteristics(wave_data, sample_rate)
+
+                        tr = ToneRecognizer()
+                        tone = tr.get_tone(sample_characteristics)
+
+            mp3_filename = os.path.basename(mp3_path)
+            mp3_url_path = os.path.join(settings.MEDIA_URL, settings.SYLLABLE_AUDIO_DIR, mp3_filename)
+
+            attempt_url = settings.UPSTREAM_PROTOCOL + settings.UPSTREAM_HOST + mp3_url_path
+
+            result = {
+                'status': True,
+                'tone': tone,
+                'attempt_path': mp3_url_path,
+                'attempt_url': attempt_url,
+            }
+            resp = JsonResponse(result)
+        except Exception as ex:
+            tb = traceback.format_exc()
+            ex_msg = ex.message if hasattr(ex, 'message') else pformat(ex, indent=4)
+            logger.error('Unexpected Exception in ToneCheck.post(): {}\n{}'.format(ex_msg, tb))
+            result = {'detail': ex_msg}
+            resp = JsonResponse(result)
 
         return resp
 
