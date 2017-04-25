@@ -56,7 +56,7 @@ def authorized(to_wrap):
             now = datetime.now(tz=pytz.utc)
             token_age_in_hours = (now - expected_token.created).total_seconds() // 3600
             if token_age_in_hours >= 24:
-                json_resp = {'status': 'fail', 'msg': 'authentication expired'}
+                json_resp = {'detail': 'authentication expired'}
                 status = 403
                 resp = JsonResponse(json_resp, status=status)
                 return resp
@@ -67,7 +67,7 @@ def authorized(to_wrap):
         except Exception as e:
             status = 500
             msg = e.message if hasattr(e, 'message') else pformat(e, indent=4)
-            json_resp = {'status': 'fail', 'detail': 'Authorization Exception:\n{}'.format(msg)}
+            json_resp = {'detail': 'Authorization Exception:\n{}'.format(msg)}
             resp = JsonResponse(json_resp, status=status)
 
         return resp
@@ -96,7 +96,7 @@ class RandomSyllable(APIView):
             'url': url
         }
 
-        resp = HttpResponse(json.dumps(data))
+        resp = JsonResponse(data)
         return resp
 
 
@@ -275,6 +275,7 @@ class AuthenticateUser(APIView):
         http_resp = JsonResponse(resp, status=status_code)
         return http_resp
 
+
 class ToneCheck(APIView):
     """ Checks the value of an audio recording against the machine learning model via
         the api at settings.UPSTREAM_HOST.
@@ -286,9 +287,11 @@ class ToneCheck(APIView):
     def dispatch(self, request, *args, **kwargs):
         return APIView.dispatch(self, request, *args, **kwargs)
 
+    @method_decorator(authorized)
     def post(self, request, *args, **kwargs):
+        # kwargs['user'] is set by "authorized" decorator
         try:
-            t = Token.objects.get(user=request.user)
+            t = Token.objects.get(user=kwargs['user'])
             auth_token = t.key
         except Token.DoesNotExist:
             auth_token = ''
@@ -371,6 +374,7 @@ class ToneCheck(APIView):
             resp = HttpResponse(json.dumps({'detail': msg}), status=400)
 
         return resp
+
 
 class GradeRecording(APIView):
 
