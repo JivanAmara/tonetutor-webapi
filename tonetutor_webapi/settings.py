@@ -12,9 +12,9 @@ https://docs.djangoproject.com/en/1.10/ref/settings/
 import os
 
 # This is the host to pass tone check requests through to.
-UPSTREAM_PROTOCOL = os.environ.get('UPSTREAM_PROTOCOL', 'https://')
-UPSTREAM_HOST = os.environ.get('UPSTREAM_HOST', 'www.mandarintt.com')
-UPSTREAM_PATH = '/api/tonecheck'
+AUDIO_PROTOCOL = os.environ.get('AUDIO_PROTOCOL', 'http://')
+AUDIO_HOST = os.environ.get('AUDIO_HOST', 'www.mandarintt.com')
+AUDIO_PATH = os.environ.get('AUDIO_PATH', '/audio/')
 
 LOG_FILEPATH = '/var/log/tonetutor_webapi.log'
 
@@ -152,8 +152,10 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = '/tonetutor_webapi-static'
 MEDIA_URL = '/'
-MEDIA_ROOT = '/tonetutor-media/'
-SYLLABLE_AUDIO_DIR = '/tonetutor-audio-files/'
+# This should be a volume mapped to the shared media root on host system
+MEDIA_ROOT = '/mnt/data-volume/tonetutor-media/'
+# Subdirectory of MEDIA_ROOT where attempt audio gets stored.
+SYLLABLE_AUDIO_DIR = 'audio-files'
 
 LOGGING = {
     'version': 1,

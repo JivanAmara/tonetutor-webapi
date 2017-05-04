@@ -365,14 +365,11 @@ class ToneCheck(APIView):
                         tone = tr.get_tone(sample_characteristics)
 
             mp3_filename = os.path.basename(mp3_path)
-            mp3_url_path = os.path.join(settings.MEDIA_URL, settings.SYLLABLE_AUDIO_DIR, mp3_filename)
-
-            attempt_url = settings.UPSTREAM_PROTOCOL + settings.UPSTREAM_HOST + mp3_url_path
+            attempt_url = settings.AUDIO_PROTOCOL + settings.AUDIO_HOST + settings.AUDIO_PATH + mp3_filename
 
             result = {
                 'status': True,
                 'tone': tone,
-                'attempt_path': mp3_url_path,
                 'attempt_url': attempt_url,
             }
             resp = JsonResponse(result)

@@ -68,8 +68,9 @@ RUN bash -c '\
 '
 
 # Run With:
-# docker run --name <container-name> -e SECRET_KEY=<site-secret-key> -e DB_PASS=<db-pass> -e STRIPE_SECRET_KEY=<secret-key> -e UPSTREAM_HOST=<upstream-host> -dit -p <host_port>:80 -v /mnt/data-volume/tonetutor-media/audio-files/:/tonetutor-media/tonetutor-audio-files/ --add-host=database-host:<host-ip> <image>
-# - Optional -e UPSTREAM_HOST is the host doing tone checks. Setting this overrides default in settings file.
-# - Optional -e UPSTREAM_PROTOCOL can be set to change from default in settings file.
+# docker run --name <container-name> -e SECRET_KEY=<site-secret-key> -e DB_PASS=<db-pass> -e STRIPE_SECRET_KEY=<secret-key> -dit -p <host_port>:80 -v /mnt/data-volume/tonetutor-media/:/mnt/data-volume/tonetutor-media/ --add-host=database-host:<host-ip> <image>
+# - Optional -e AUDIO_HOST (www.mandarintt.com) is the host serving audio files. Setting this overrides default in settings file.
+# - Optional -e AUDIO_PROTOCOL (http://) can be set to change from default in settings file.
+# - Optional -e AUDIO_PATH (/audio/) can be set to change from default in settings file.
 # - Optional -e DEBUG=True will run using the production settings file but with DEBUG=True
-# Enter the container and run migrations 'python3 /tonetutor_webapi/manage.py migrate --noinput'
+# Enter the container and run migrations 'xvfb-run -a python3 /tonetutor_webapi/manage.py migrate --noinput'
