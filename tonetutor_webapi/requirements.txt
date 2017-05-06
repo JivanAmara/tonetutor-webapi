@@ -26,3 +26,5 @@ pyasn1
 
 # --- Required for tests
 pytest
+mock
+six==1.10.0     # override to support mock, something else installs 1.5.2

@@ -1,0 +1,33 @@
+Tonetutor WebAPI
+================
+
+Dependencies:
+ * hanzi-basics 1.1.2           - PinyinSyllable model, some ranking functions
+ * syllable-samples 0.2.1       - Collection of decent quality syllable audio files
+ * tonerecorder 1.1.6           - RecordedSyllable model
+ * tonetutor_usermgmt 0.0.3     - SubscriptionHistory model
+
+Endpoints:
+ * /tokenauth/
+   - In (JSON/URL-Encoded): username, password, newUser
+   - Out (JSON) Ok: (200) username, user_id, auth_token, subscr_enddate
+   - Out (JSON) Non-Existent user: (400) detail
+   - Out (JSON) Bad Password: (401) detail
+ * all endpoints except /tokenauth/
+   - In (JSON/URL-Encoded): authToken
+   - Out (JSON) Ok: Continue to endpoint
+   - Out (JSON) auth token expired: (403) detail
+   - Out (JSON) unexpected problem: (500) detail
+ * /pay_subscription/
+   - In (JSON/URL-Encoded): stripeToken
+   - Out (JSON) Ok: (200) subscribed_until
+   - Out (JSON) Charge declined: (402) detail
+ * /randomsyllable/
+   - In: <No input params required>
+   - Out (JSON) Ok: (200) sound, tone, display (tone-marked pinyin), hanzi, url (to syllable recording)
+ * /tonecheck/ (Currently, v0.1.6, requires django authentication & doesn't accept authToken, fixed in v0.1.7)
+   - In (URL-Encoded): extension, expected_sound, expected_tone, is_native, attempt_md5, attempt
+   - Out (JSON) Ok: (200) tone (1-5, null), status (always true), attempt_path (to attempt recording)
+
+    url(r'^get_recording_to_grade/?', GetRecordingToGrade.as_view(), name='ttapi_get_recording_to_grade'),
+    url(r'^grade_recording/(?P<recording_id>[\d]+)/?', GradeRecording.as_view(), name='ttapi_grade_recording'),

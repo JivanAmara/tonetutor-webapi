@@ -18,10 +18,9 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.base import TemplateView
+from django.db import transaction
 from hanzi_basics.models import PinyinSyllable
-import psycopg2
 import pytz
-import requests
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
@@ -144,7 +143,6 @@ class AddMonthSubscription(APIView):
         # One-month subscription price in dollars
         month_price = 5.0
 
-        # --- Get latest subscription for user
         user = kwargs['user']
 
         # Create a charge: this will charge the user's card
@@ -171,7 +169,6 @@ class AddMonthSubscription(APIView):
             self.success = False
             self.error_msg = msg
             logger.critical(msg)
-
 
         if self.success is True:
             latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('-end_date').first()
@@ -238,15 +235,32 @@ class AuthenticateUser(APIView):
             # Create a new user only if the newUser flag is set and there isn't an existing user.
             if not User.objects.filter(username=username).exists():
                 if new_user:
-                    logger.info('Creating new user')
-                    User.objects.create_user(username=username, password=password)
+                    with transaction.atomic():
+                        user = User.objects.create_user(username=username, password=password)
+                        logger.info('Created new user: {}'.format(username))
+                        subscr_begin = datetime.now()
+                        subscr_end = subscr_begin + timedelta(days=3)
+                        SubscriptionHistory.objects.create(
+                            user=user, payment_amount=0, begin_date=subscr_begin, end_date=subscr_end
+                        )
+                        time_format = '%Y-%m-%dT%H:%M'
+                        msg_args = (username, subscr_begin.strftime(time_format), subscr_end.strftime(time_format))
+                        msg = 'Added trial subscription of 3 days for {}: {} - {}'.format(*msg_args)
+                        logger.info(msg)
                 else:
                     # User doesn't exist & new user not indicated.
                     logger.error('User does not exist')
                     status_code = 400
                     resp = {'detail': 'User "{}" does not exist.'.format(username)}
-                    json_resp = json.dumps(resp)
-                    http_resp = HttpResponse(json_resp, status=status_code)
+                    http_resp = JsonResponse(resp, status=status_code)
+                    return http_resp
+            # Return message if newUser is set but the user exists
+            else:
+                if new_user:
+                    logger.info('newUser set for existing username: {}'.format(username))
+                    status_code = 400
+                    resp = {'detail': 'username "{}" already in use'.format(username)}
+                    http_resp = JsonResponse(resp, status=status_code)
                     return http_resp
 
             logger.info('Attempting authentication')
@@ -357,12 +371,22 @@ class ToneCheck(APIView):
                         expected_sound, expected_tone, attempt_length)
                     )
                     if attempt_length < min_length:
+                        msg = 'Attempt shorter than minimum length: {} < {}, skipping analysis'\
+                            .format(attempt_length, min_length)
+                        logger.info(msg)
                         tone = None
                     else:
                         sample_characteristics = generate_all_characteristics(wave_data, sample_rate)
 
                         tr = ToneRecognizer()
                         tone = tr.get_tone(sample_characteristics)
+                        try:
+                            expected_tone_int = int(expected_tone)
+                        except:
+                            expected_tone_int = expected_tone
+                        equal_text = '==' if tone == expected_tone_int else '!='
+                        msg = 'Attempt tone ({}) {} expected tone ({})'.format(tone, equal_text, expected_tone)
+                        logger.info(msg)
 
             mp3_filename = os.path.basename(mp3_path)
             attempt_url = settings.AUDIO_PROTOCOL + settings.AUDIO_HOST + settings.AUDIO_PATH + mp3_filename
