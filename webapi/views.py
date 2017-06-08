@@ -5,6 +5,7 @@ import json
 from logging import getLogger
 import os
 from pprint import pformat
+import pprint
 import scipy
 from tempfile import NamedTemporaryFile
 import traceback
@@ -13,14 +14,15 @@ from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib.staticfiles.templatetags.staticfiles import static
+from django.db import transaction
 from django.http.response import HttpResponse, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic.base import TemplateView
-from django.db import transaction
 from hanzi_basics.models import PinyinSyllable
 import pytz
+import requests
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
@@ -118,6 +120,75 @@ class RandomSyllable(APIView):
 class StripeTest(TemplateView):
     template_name = 'webapi/stripe_test.html'
 
+month_price = 5.0
+
+def add_month_to_subscription(user, stripe_charge=None, itunes_payment_receipt=None):
+    latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('-end_date').first()
+    if (latest_subscription is not None and
+        latest_subscription.end_date < datetime.date(datetime.today() - timedelta(days=1))):
+        latest_subscription = None
+
+    if latest_subscription is None:
+        if stripe_charge:
+            payment_id = '(stripe) {}'.format(stripe_charge['id'])
+            payment_date = datetime.fromtimestamp(stripe_charge['created'])
+        elif itunes_payment_receipt:
+            payment_id = '(itunes) {}'.format(itunes_payment_receipt.get('transaction_id'))
+            payment_date = datetime.fromtimestamp(itunes_payment_receipt.get('purchase_date'))
+
+        SubscriptionHistory.objects.create(
+            user=user, begin_date=datetime.today(),
+            end_date=datetime.date(datetime.today() + timedelta(days=31)),
+            payment_amount=month_price,
+            payment_id=payment_id,
+            payment_date=payment_date
+        )
+    else:
+        latest_subscription.end_date = latest_subscription.end_date + timedelta(days=31)
+        latest_subscription.save()
+    resp = {'subscribed_until': latest_subscription.end_date.strftime('%Y-%m-%d')}
+    return resp
+
+
+class ValidateITunesReceipt(APIView):
+    ''' Checks an iTunes receipt, and if valid adds 1 month to the user's subscription.
+        In: JSON {'receipt-data': <base64-encoded receipt data>}
+        Returns:
+            (200) JSON {'subscribed_until': <YYYY-MM-DD>
+    '''
+    @method_decorator(csrf_exempt)
+    def dispatch(self, request, *args, **kwargs):
+        return View.dispatch(self, request, *args, **kwargs)
+
+    @method_decorator(authorized)
+    def post(self, request, *args, **kwargs):
+        testing_service_url = 'https://sandbox.itunes.apple.com/verifyReceipt'
+        live_service_url = 'https://buy.itunes.apple.com/verifyReceipt'
+        service_url = testing_service_url
+
+        request_args = json.loads(request.body.decode('utf8'))
+        receipt_data = request_args['receipt-data']
+
+        service_payload = {'receipt-data': receipt_data}
+        itunes_resp = requests.post(service_url, json=service_payload)
+        itunes_resp_json = itunes_resp.json()
+
+        if itunes_resp.status_code == 200 and itunes_resp_json['status'] == 0:
+            status_code = 200
+            json_receipt = itunes_resp_json['receipt']
+            receipt_output_friendly = pprint.pformat(json_receipt, indent=2)
+            logger.info('Successfully verified itunes receipt:\n {}'.format(receipt_output_friendly))
+            resp = add_month_to_subscription(request.user, itunes_payment_receipt=json_receipt)
+        elif itunes_resp.status_code == 200:
+            status_code = 424
+            resp = {'detail': 'itunes validation failure, itunes api status: {}'.format(itunes_resp_json['status'])}
+        else:
+            status_code = 424
+            resp = {'detail': 'Connection to itunes failed with http status code: {}'.format(itunes_resp.status_code)}
+
+        resp = JsonResponse(resp, status=status_code)
+        return resp
+
 
 class AddMonthSubscription(APIView):
     ''' Adds 1 month to the user's current subscription, or creates a new 1 month subscription if there is
@@ -171,22 +242,7 @@ class AddMonthSubscription(APIView):
             logger.critical(msg)
 
         if self.success is True:
-            latest_subscription = SubscriptionHistory.objects.filter(user=user).order_by('-end_date').first()
-            if (latest_subscription is not None and
-                latest_subscription.end_date < datetime.date(datetime.today() - timedelta(days=1))):
-                latest_subscription = None
-
-            if latest_subscription is None:
-                SubscriptionHistory.objects.create(
-                        user=user, begin_date=datetime.today(),
-                        end_date=datetime.date(datetime.today() + timedelta(days=31)),
-                        payment_amount=month_price,
-                        stripe_confirm=charge['id'], payment_date=datetime.fromtimestamp(charge['created'])
-                )
-            else:
-                latest_subscription.end_date = latest_subscription.end_date + timedelta(days=31)
-                latest_subscription.save()
-            resp = {'subscribed_until': latest_subscription.end_date.strftime('%Y-%m-%d')}
+            resp = add_month_to_subscription(user, stripe_charge=charge)
             status_code = 200
         else:
             msg = 'Stripe charge declined: {}'.format(self.error_msg)

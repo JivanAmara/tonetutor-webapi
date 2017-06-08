@@ -7,7 +7,7 @@ from django.conf.urls import url, include
 from rest_framework import routers
 
 from webapi.views import AuthenticateUser, RandomSyllable, ToneCheck, GradeRecording, GetRecordingToGrade, \
-    AddMonthSubscription
+    AddMonthSubscription, ValidateITunesReceipt
 
 
 router = routers.DefaultRouter()
@@ -18,7 +18,8 @@ urlpatterns = [
     url(r'^tokenauth/?', AuthenticateUser.as_view(), name='AuthenticateUser'),
     url(r'^randomsyllable/?', RandomSyllable.as_view()),
     url(r'^tonecheck/?', ToneCheck.as_view()),
-    url(r'^pay_subscription/?', AddMonthSubscription.as_view()),
+    url(r'^pay_subscription/?$', AddMonthSubscription.as_view()),
+    url(r'^pay_subscription_applepay/?', ValidateITunesReceipt.as_view()),
 #     url(r'^stripe_test/?', StripeTest.as_view()),
     url(r'^get_recording_to_grade/?', GetRecordingToGrade.as_view(), name='ttapi_get_recording_to_grade'),
     url(r'^grade_recording/(?P<recording_id>[\d]+)/?', GradeRecording.as_view(), name='ttapi_grade_recording'),

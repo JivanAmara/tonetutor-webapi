@@ -28,6 +28,10 @@ Endpoints:
  * /tonecheck/ (Currently, v0.1.6, requires django authentication & doesn't accept authToken, fixed in v0.1.7)
    - In (URL-Encoded): extension, expected_sound, expected_tone, is_native, attempt_md5, attempt
    - Out (JSON) Ok: (200) tone (1-5, null), status (always true), attempt_path (to attempt recording)
+ * /pay_subscription_applepay/
+   - In: (JSON): {'receipt-data': <base64-encoded receipt data>}
+   - Out (JSON) Ok: (200) subscribed_until
+   - Out (JSON) Problem with itunes validation: (424) detail
 
     url(r'^get_recording_to_grade/?', GetRecordingToGrade.as_view(), name='ttapi_get_recording_to_grade'),
     url(r'^grade_recording/(?P<recording_id>[\d]+)/?', GradeRecording.as_view(), name='ttapi_grade_recording'),

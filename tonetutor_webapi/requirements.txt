@@ -7,7 +7,7 @@ django-cors-headers
 docker/dependencies/syllable-samples-0.2.1.tar.gz
 docker/dependencies/tonerecorder-1.1.6.tar.gz
 docker/dependencies/hanzi-basics-1.1.2.tar.gz
-docker/dependencies/tonetutor_usermgmt-0.0.3.tar.gz
+docker/dependencies/tonetutor_usermgmt-0.0.4.tar.gz
 docker/dependencies/ttlib-0.2.3.tar.gz
 pytz
 stripe
@@ -18,7 +18,7 @@ pytaglib
 mutagen
 
 # --- Requests
-requests
+requests>=2.4.2
 # requests' SSL support requires these three
 pyOpenSSL
 ndg-httpsclient
