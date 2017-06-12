@@ -8,7 +8,7 @@ class ValidateITunesReceiptTests(TestCase):
 
     def test_happy_path(self):
         auth_url = reverse('AuthenticateUser')
-        validate_url = reverse('ValidateITunesReceipt')
+        validate_url = reverse('ValidateITunesReceiptTest')
         username = 'testuser'
         password = 'testuser'
 

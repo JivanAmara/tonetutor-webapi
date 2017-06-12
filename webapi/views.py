@@ -163,9 +163,13 @@ class ValidateITunesReceipt(APIView):
 
     @method_decorator(authorized)
     def post(self, request, *args, **kwargs):
+        use_testing_endpoint = True if kwargs.get('use_testing_endpoint') else False
         testing_service_url = 'https://sandbox.itunes.apple.com/verifyReceipt'
         live_service_url = 'https://buy.itunes.apple.com/verifyReceipt'
-        service_url = testing_service_url
+        if use_testing_endpoint:
+            service_url = testing_service_url
+        else:
+            service_url = live_service_url
 
         request_args = json.loads(request.body.decode('utf8'))
         receipt_data = request_args['receipt-data']
