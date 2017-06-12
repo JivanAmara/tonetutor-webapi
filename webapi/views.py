@@ -72,6 +72,7 @@ def authorized(to_wrap):
 
             # Everything's good, pass through to the wrapped function
             kwargs['user'] = expected_token.user
+            request.user = expected_token.user
             try:
                 resp = to_wrap(request, *args, **kwargs)
             except Exception as e:
