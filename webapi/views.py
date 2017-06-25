@@ -334,7 +334,9 @@ class AuthenticateUser(APIView):
                 }
             # If we've got a valid user, update & return an auth token for the user.
             else:
-                logger.info('Authentication successful, updating auth token')
+                logger.info('Authentication successful, updating last_login and auth token')
+                user.last_login = datetime.now(tz=pytz.utc)
+                user.save()
                 token, created = Token.objects.get_or_create(user=user)
                 if not created:
                     token.delete()
